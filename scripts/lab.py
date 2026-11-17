@@ -534,7 +534,7 @@ def check_now(api, hostids):
     """Pede ao Zabbix para coletar já os itens que ainda não têm valor.
     Só itens novos: uma coleta extra 1 s depois da normal distorce itens "por segundo" (tráfego)."""
     items = api.call("item.get", {"output": ["itemid", "lastclock"], "hostids": hostids, "filter": {"type": [3, 15, 20]},
-                                  "templated": False, "webitems": False})
+                                  "templated": False, "webitems": False, "monitored": True})
     rules = api.call("discoveryrule.get", {"output": ["itemid", "lastclock"], "hostids": hostids})
     ids = [i["itemid"] for i in items + rules if i.get("lastclock", "0") == "0"]
     for start in range(0, len(ids), 50):
@@ -628,7 +628,7 @@ def check_collection(env, kits):
 
 def item_values(api, hostids, **flt):
     return api.call("item.get", {"output": ["itemid", "hostid", "key_", "name", "lastvalue", "lastclock", "state", "error"],
-                                 "hostids": hostids, "webitems": False, **flt})
+                                 "hostids": hostids, "webitems": False, "monitored": True, **flt})
 
 
 def check_items(api, kits, wait=True):
@@ -1044,6 +1044,8 @@ def cmd_up(args):
     ok = check_collection(env, kits)
     say("Verificando os itens no Zabbix (a primeira descoberta leva ~1 minuto):")
     ok &= check_items(api, kits, wait=not args.no_wait)
+    # itens criados pela descoberta com intervalo longo (ex.: AS remoto do BGP, 1 h) ganham a 1ª coleta agora
+    check_now(api, list(hosts.values()))
     show_access(env)
     if not ok:
         raise LabError("Algo ainda não coletou. Rode ./lab.sh status em 1 minuto ou veja ./lab.sh logs <serviço>.")
