@@ -1,0 +1,7 @@
+# Kit NOC (MSP) - 4 links de internet monitorados com o template NOTO - LINK INTERNET
+# host;sufixo_ip;descricao;contratado_mbps;perfil;operadora;local
+# operadora e local viram as macros {$OPERADORA} e {$LOCAL} do host (usadas nos dashboards e no mapa)
+FW-INDUSTRIA-A;11;Industria A - link principal;500;comercial;Rede Alfa;São Paulo - SP
+FW-ESCOLA-C;12;Escola C - link principal;200;limite;NetSul Fibra;Curitiba - PR
+FW-FILIAL-NORTE;13;Filial Norte - link principal;100;acima;Conecta Norte;Belém - PA
+FW-CLINICA-H;14;Clinica H - link principal;300;baixo;Rede Alfa;Belo Horizonte - MG

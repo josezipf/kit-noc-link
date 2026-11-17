@@ -1,0 +1,6 @@
+# Kit NOC (MSP) - túneis VPN monitorados com o template NOTO - VPN (ping até a LAN do cliente, através do FW)
+# host;fw;ip_lan;nome_visivel;tipo;cripto
+VPN-INDUSTRIA-A;FW-INDUSTRIA-A;192.168.10.1;VPN Matriz x Industria A;IPsec S2S;AES-256-GCM / SHA384
+VPN-ESCOLA-C;FW-ESCOLA-C;192.168.20.1;VPN Matriz x Escola C;IPsec S2S;AES-256-GCM / SHA256
+VPN-FILIAL-NORTE;FW-FILIAL-NORTE;192.168.30.1;VPN Matriz x Filial Norte;WireGuard;ChaCha20-Poly1305
+VPN-CLINICA-H;FW-CLINICA-H;192.168.40.1;VPN Matriz x Clinica H;IPsec S2S;AES-256-GCM / SHA384

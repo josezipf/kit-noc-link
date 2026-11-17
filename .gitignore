@@ -1,0 +1,20 @@
+.env
+.lab-state.json
+.lab.lock
+__pycache__/
+*.pyc
+
+# pacote de dashboards para os alunos: fica só na máquina do professor
+Dashboards/
+
+# templates do Kit Provedor: ficam só na máquina do professor
+Templates/
+
+# dashboards (produto): ficam só na máquina do professor e são entregues à parte.
+# As pastas ficam no repositório (vazias) para o Grafana do lab carregar o que for colocado nelas.
+dashboards-src/
+scripts/build_dashboards.py
+msp/dashboards/*
+!msp/dashboards/.gitkeep
+provedor/dashboards/*
+!provedor/dashboards/.gitkeep

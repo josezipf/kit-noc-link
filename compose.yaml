@@ -1,0 +1,307 @@
+# Laboratório NOTO TI - Dashboards de links (Kit NOC e Kit Provedor)
+# Kits: profile "msp" (Kit NOC) e "provedor" (Kit Provedor). Use ./lab.sh up --msp | --provedor.
+# Não edite as variáveis LAB_*: elas são geradas no .env pelo ./lab.sh up.
+name: nototi-dashboards-links
+
+x-node: &node
+  build: ./node
+  image: nototi-dashboards-links-node:1
+  init: true
+  restart: unless-stopped
+  cap_drop: [ALL]
+  cap_add: [NET_ADMIN, NET_RAW, NET_BIND_SERVICE]
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  volumes: [./provedor:/lab/provedor:ro, ./msp:/lab/msp:ro]
+  sysctls:
+    net.ipv4.ip_forward: "1"
+    net.ipv4.conf.all.rp_filter: "0"
+    net.ipv4.conf.default.rp_filter: "0"
+  healthcheck:
+    test: [CMD-SHELL, "test -f /tmp/lab-node.ready"]
+    interval: 2s
+    timeout: 1s
+    retries: 30
+  logging:
+    driver: json-file
+    options: {max-size: 5m, max-file: "2"}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # keepalive: derruba conexões órfãs do zabbix-server quando o container noc é recriado
+    command: [postgres, -c, max_connections=300, -c, tcp_keepalives_idle=30, -c, tcp_keepalives_interval=10, -c, tcp_keepalives_count=3]
+    environment:
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${LAB_DB_PASSWORD:?Execute ./lab.sh up}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U zabbix -d zabbix"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+  # Roteador do NOC: o zabbix-server usa o namespace de rede dele.
+  noc:
+    <<: *node
+    hostname: noc
+    environment: {LAB_ROLE: noc, LAB_NET_PREFIX: "${LAB_NET_PREFIX}"}
+    networks:
+      backend: {ipv4_address: "${LAB_NET_PREFIX}.0.10", aliases: [zabbix-server]}
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.10"}
+      internet: {ipv4_address: "${LAB_NET_PREFIX}.4.10"}
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:${LAB_ZABBIX_TAG:-alpine-7.0-latest}
+    restart: unless-stopped
+    network_mode: service:noc
+    depends_on:
+      db: {condition: service_healthy}
+      noc: {condition: service_healthy}
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${LAB_DB_PASSWORD}
+      ZBX_STARTPINGERS: "4"
+      ZBX_CACHEUPDATEFREQUENCY: "10"
+      ZBX_CACHESIZE: 64M
+      ZBX_VALUECACHESIZE: 64M
+      ZBX_HISTORYCACHESIZE: 32M
+      ZBX_TRENDCACHESIZE: 16M
+    cap_add: [NET_RAW]
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:${LAB_ZABBIX_TAG:-alpine-7.0-latest}
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+      zabbix-server: {condition: service_started}
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${LAB_DB_PASSWORD}
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_NAME: NOTO TI - Lab Dashboards de Links
+      PHP_TZ: America/Sao_Paulo
+    ports: ["${LAB_BIND:-127.0.0.1}:${LAB_ZBX_PORT}:8080"]
+    networks: [backend]
+
+  grafana:
+    image: grafana/grafana:${LAB_GRAFANA_TAG:-12.3.0}
+    restart: unless-stopped
+    depends_on:
+      zabbix-web: {condition: service_started}
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${LAB_GRAFANA_PASSWORD}
+      GF_PLUGINS_PREINSTALL_SYNC: ${LAB_GRAFANA_PLUGINS:-alexanderzobnin-zabbix-app@6.10.3,marcusolsson-dynamictext-panel@6.3.1}
+      GF_PANELS_DISABLE_SANITIZE_HTML: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: America/Sao_Paulo
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      LAB_ZBX_GRAFANA_PASSWORD: ${LAB_ZBX_GRAFANA_PASSWORD}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./msp/dashboards:/var/lib/grafana/dashboards-noto/msp:ro
+      - ./provedor/dashboards:/var/lib/grafana/dashboards-noto/provedor:ro
+    ports: ["${LAB_BIND:-127.0.0.1}:${LAB_GRAFANA_PORT}:3000"]
+    networks: [backend]
+
+  # ---------------- Kit Provedor (gerado a partir de provedor/topologia.json) ----------------
+  borda-01:
+    <<: *node
+    profiles: [provedor]
+    hostname: BORDA-01
+    # FRR (BGP): precisa de SYS_ADMIN (namespaces) e de pastas graváveis
+    cap_add: [NET_ADMIN, NET_RAW, NET_BIND_SERVICE, SYS_ADMIN]
+    tmpfs: [/tmp, /run, /var/tmp, /var/lib/frr, /lib/frr]
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: BORDA-01, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.21"}
+      enlace-borda-transito-a: {ipv4_address: "${LAB_NET_PREFIX}.2.2"}
+      enlace-borda-transito-b: {ipv4_address: "${LAB_NET_PREFIX}.2.10"}
+      enlace-borda-ix-sp: {ipv4_address: "${LAB_NET_PREFIX}.2.18"}
+      enlace-bng-borda: {ipv4_address: "${LAB_NET_PREFIX}.2.25"}
+
+  transito-a:
+    <<: *node
+    profiles: [provedor]
+    hostname: TRANSITO-A
+    # FRR (BGP): precisa de SYS_ADMIN (namespaces) e de pastas graváveis
+    cap_add: [NET_ADMIN, NET_RAW, NET_BIND_SERVICE, SYS_ADMIN]
+    tmpfs: [/tmp, /run, /var/tmp, /var/lib/frr, /lib/frr]
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: TRANSITO-A, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      enlace-borda-transito-a: {ipv4_address: "${LAB_NET_PREFIX}.2.1"}
+
+  transito-b:
+    <<: *node
+    profiles: [provedor]
+    hostname: TRANSITO-B
+    # FRR (BGP): precisa de SYS_ADMIN (namespaces) e de pastas graváveis
+    cap_add: [NET_ADMIN, NET_RAW, NET_BIND_SERVICE, SYS_ADMIN]
+    tmpfs: [/tmp, /run, /var/tmp, /var/lib/frr, /lib/frr]
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: TRANSITO-B, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      enlace-borda-transito-b: {ipv4_address: "${LAB_NET_PREFIX}.2.9"}
+
+  ix-sp:
+    <<: *node
+    profiles: [provedor]
+    hostname: IX-SP
+    # FRR (BGP): precisa de SYS_ADMIN (namespaces) e de pastas graváveis
+    cap_add: [NET_ADMIN, NET_RAW, NET_BIND_SERVICE, SYS_ADMIN]
+    tmpfs: [/tmp, /run, /var/tmp, /var/lib/frr, /lib/frr]
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: IX-SP, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      enlace-borda-ix-sp: {ipv4_address: "${LAB_NET_PREFIX}.2.17"}
+
+  bng-01:
+    <<: *node
+    profiles: [provedor]
+    hostname: BNG-01
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: BNG-01, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.22"}
+      enlace-bng-borda: {ipv4_address: "${LAB_NET_PREFIX}.2.26"}
+      enlace-bng-sw: {ipv4_address: "${LAB_NET_PREFIX}.2.33"}
+
+  sw-agregacao:
+    <<: *node
+    profiles: [provedor]
+    hostname: SW-AGREGACAO
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: SW-AGREGACAO, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.23"}
+      enlace-bng-sw: {ipv4_address: "${LAB_NET_PREFIX}.2.34"}
+      enlace-olt-centro-sw: {ipv4_address: "${LAB_NET_PREFIX}.2.41"}
+      enlace-olt-norte-sw: {ipv4_address: "${LAB_NET_PREFIX}.2.49"}
+
+  olt-centro:
+    <<: *node
+    profiles: [provedor]
+    hostname: OLT-CENTRO
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: OLT-CENTRO, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.31"}
+      enlace-olt-centro-sw: {ipv4_address: "${LAB_NET_PREFIX}.2.42"}
+
+  olt-norte:
+    <<: *node
+    profiles: [provedor]
+    hostname: OLT-NORTE
+    environment: {LAB_ROLE: provedor, LAB_EQUIP: OLT-NORTE, LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}"}
+    networks:
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.32"}
+      enlace-olt-norte-sw: {ipv4_address: "${LAB_NET_PREFIX}.2.50"}
+
+  srv-dns:
+    image: zabbix/zabbix-agent2:${LAB_ZABBIX_TAG:-alpine-7.0-latest}
+    profiles: [provedor]
+    restart: unless-stopped
+    hostname: SRV-DNS
+    environment: {ZBX_HOSTNAME: SRV-DNS, ZBX_SERVER_HOST: "${LAB_NET_PREFIX}.1.10", ZBX_ACTIVE_ALLOW: "false"}
+    networks:
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.41"}
+
+  srv-radius:
+    image: zabbix/zabbix-agent2:${LAB_ZABBIX_TAG:-alpine-7.0-latest}
+    profiles: [provedor]
+    restart: unless-stopped
+    hostname: SRV-RADIUS
+    environment: {ZBX_HOSTNAME: SRV-RADIUS, ZBX_SERVER_HOST: "${LAB_NET_PREFIX}.1.10", ZBX_ACTIVE_ALLOW: "false"}
+    networks:
+      core: {ipv4_address: "${LAB_NET_PREFIX}.1.42"}
+
+  # ---------------- Kit NOC (MSP) ----------------
+  operadora:
+    <<: *node
+    profiles: [msp]
+    hostname: OPERADORA
+    environment: {LAB_ROLE: operadora, LAB_NET_PREFIX: "${LAB_NET_PREFIX}"}
+    networks:
+      internet: {ipv4_address: "${LAB_NET_PREFIX}.4.2"}
+
+  fw-industria-a:
+    <<: *node
+    profiles: [msp]
+    hostname: FW-INDUSTRIA-A
+    environment: {LAB_ROLE: fw, LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}", LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_IP: "${LAB_NET_PREFIX}.4.11", LAB_LAN_OCTET: "10", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_LOCATION: "FW-INDUSTRIA-A - cliente MSP"}
+    networks:
+      internet: {ipv4_address: "${LAB_NET_PREFIX}.4.11"}
+
+  fw-escola-c:
+    <<: *node
+    profiles: [msp]
+    hostname: FW-ESCOLA-C
+    environment: {LAB_ROLE: fw, LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}", LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_IP: "${LAB_NET_PREFIX}.4.12", LAB_LAN_OCTET: "20", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_LOCATION: "FW-ESCOLA-C - cliente MSP"}
+    networks:
+      internet: {ipv4_address: "${LAB_NET_PREFIX}.4.12"}
+
+  fw-filial-norte:
+    <<: *node
+    profiles: [msp]
+    hostname: FW-FILIAL-NORTE
+    environment: {LAB_ROLE: fw, LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}", LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_IP: "${LAB_NET_PREFIX}.4.13", LAB_LAN_OCTET: "30", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_LOCATION: "FW-FILIAL-NORTE - cliente MSP"}
+    networks:
+      internet: {ipv4_address: "${LAB_NET_PREFIX}.4.13"}
+
+  fw-clinica-h:
+    <<: *node
+    profiles: [msp]
+    hostname: FW-CLINICA-H
+    environment: {LAB_ROLE: fw, LAB_DIA_SEGUNDOS: "${LAB_DIA_SEGUNDOS:-3600}", LAB_NET_PREFIX: "${LAB_NET_PREFIX}", LAB_IP: "${LAB_NET_PREFIX}.4.14", LAB_LAN_OCTET: "40", LAB_SNMP_COMMUNITY: "${LAB_SNMP_COMMUNITY}", LAB_LOCATION: "FW-CLINICA-H - cliente MSP"}
+    networks:
+      internet: {ipv4_address: "${LAB_NET_PREFIX}.4.14"}
+
+networks:
+  backend:
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.0.0/24"}]}
+  core:
+    internal: true
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.1.0/24"}]}
+  internet:
+    internal: true
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.4.0/24"}]}
+  enlace-borda-transito-a:
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "9000"}
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.2.0/29", gateway: "${LAB_NET_PREFIX}.2.6"}]}
+  enlace-borda-transito-b:
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "9000"}
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.2.8/29", gateway: "${LAB_NET_PREFIX}.2.14"}]}
+  enlace-borda-ix-sp:
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "9000"}
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.2.16/29", gateway: "${LAB_NET_PREFIX}.2.22"}]}
+  enlace-bng-borda:
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "9000"}
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.2.24/29", gateway: "${LAB_NET_PREFIX}.2.30"}]}
+  enlace-bng-sw:
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "9000"}
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.2.32/29", gateway: "${LAB_NET_PREFIX}.2.38"}]}
+  enlace-olt-centro-sw:
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "9000"}
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.2.40/29", gateway: "${LAB_NET_PREFIX}.2.46"}]}
+  enlace-olt-norte-sw:
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "9000"}
+    ipam: {config: [{subnet: "${LAB_NET_PREFIX}.2.48/29", gateway: "${LAB_NET_PREFIX}.2.54"}]}
+
+volumes:
+  postgres-data:
+  grafana-data:

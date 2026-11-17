@@ -1,0 +1,82 @@
+{
+  "_comentario": "Kit Provedor: topologia do 'Provedor Exemplo' (tudo fictício). IPs relativos ao LAB_NET_PREFIX (ex.: '2.2' = 10.150.2.2). mgmt = rede de gerência (core), por onde o Zabbix monitora. Velocidades e bandas em Mbps.",
+  "asn": 64512,
+  "prefixo_proprio": "203.0.113.0/24",
+  "equipamentos": {
+    "BORDA-01": {
+      "servico": "borda-01", "papel": "borda", "mgmt": "1.21", "monitorar": true,
+      "nome_visivel": "BORDA-01 (roteador de borda)",
+      "interfaces": [
+        {"ip": "2.2/29", "nome": "ge-transito-a", "alias": "TRANSITO A AS64601 | 1G", "velocidade": 1000},
+        {"ip": "2.10/29", "nome": "ge-transito-b", "alias": "TRANSITO B AS64602 | 150M", "velocidade": 1000},
+        {"ip": "2.18/29", "nome": "ge-ix", "alias": "IX SP AS64603 | 1G", "velocidade": 1000},
+        {"ip": "2.25/29", "nome": "ge-bng", "alias": "BNG-01 | 10G", "velocidade": 10000}
+      ],
+      "bgp": {"asn": 64512, "vizinhos": [
+        {"ip": "2.1", "asn": 64601, "nome": "TRANSITO-A"},
+        {"ip": "2.9", "asn": 64602, "nome": "TRANSITO-B"},
+        {"ip": "2.17", "asn": 64603, "nome": "IX-SP"}
+      ]}
+    },
+    "TRANSITO-A": {
+      "servico": "transito-a", "papel": "upstream", "mgmt": null, "monitorar": false,
+      "interfaces": [{"ip": "2.1/29", "nome": "ge-cliente", "alias": "Provedor Exemplo AS64512", "velocidade": 1000}],
+      "bgp": {"asn": 64601, "vizinhos": [{"ip": "2.2", "asn": 64512, "nome": "BORDA-01"}], "anuncia": {"base": "198.18.0.0", "quantidade": 120}}
+    },
+    "TRANSITO-B": {
+      "servico": "transito-b", "papel": "upstream", "mgmt": null, "monitorar": false,
+      "interfaces": [{"ip": "2.9/29", "nome": "ge-cliente", "alias": "Provedor Exemplo AS64512", "velocidade": 1000}],
+      "bgp": {"asn": 64602, "vizinhos": [{"ip": "2.10", "asn": 64512, "nome": "BORDA-01"}], "anuncia": {"base": "198.19.0.0", "quantidade": 80}}
+    },
+    "IX-SP": {
+      "servico": "ix-sp", "papel": "upstream", "mgmt": null, "monitorar": false,
+      "interfaces": [{"ip": "2.17/29", "nome": "ge-participante", "alias": "Provedor Exemplo AS64512", "velocidade": 1000}],
+      "bgp": {"asn": 64603, "vizinhos": [{"ip": "2.18", "asn": 64512, "nome": "BORDA-01"}], "anuncia": {"base": "198.19.200.0", "quantidade": 30}}
+    },
+    "BNG-01": {
+      "servico": "bng-01", "papel": "concentrador", "mgmt": "1.22", "monitorar": true,
+      "nome_visivel": "BNG-01 (concentrador PPPoE)",
+      "interfaces": [
+        {"ip": "2.26/29", "nome": "ge-borda", "alias": "BORDA-01 | 10G", "velocidade": 10000},
+        {"ip": "2.33/29", "nome": "ge-agregacao", "alias": "SW-AGREGACAO | 10G", "velocidade": 10000}
+      ]
+    },
+    "SW-AGREGACAO": {
+      "servico": "sw-agregacao", "papel": "switch", "mgmt": "1.23", "monitorar": true,
+      "nome_visivel": "SW-AGREGACAO (switch de agregação)",
+      "interfaces": [
+        {"ip": "2.34/29", "nome": "ge-bng", "alias": "BNG-01 | 10G", "velocidade": 10000},
+        {"ip": "2.41/29", "nome": "ge-olt-centro", "alias": "OLT-CENTRO | 1G", "velocidade": 1000},
+        {"ip": "2.49/29", "nome": "ge-olt-norte", "alias": "OLT-NORTE | 1G", "velocidade": 1000}
+      ]
+    },
+    "OLT-CENTRO": {
+      "servico": "olt-centro", "papel": "olt", "mgmt": "1.31", "monitorar": true,
+      "nome_visivel": "OLT-CENTRO (POP Centro)",
+      "interfaces": [{"ip": "2.42/29", "nome": "ge-uplink", "alias": "SW-AGREGACAO | 1G", "velocidade": 1000}],
+      "olt": {"pons": 4, "onus_por_pon": 8, "semente": 11, "pico_mbps": 300,
+              "anomalias": {"3.6": {"rx": -25.6}, "4.2": {"status": "energia"}}}
+    },
+    "OLT-NORTE": {
+      "servico": "olt-norte", "papel": "olt", "mgmt": "1.32", "monitorar": true,
+      "nome_visivel": "OLT-NORTE (POP Norte)",
+      "interfaces": [{"ip": "2.50/29", "nome": "ge-uplink", "alias": "SW-AGREGACAO | 1G", "velocidade": 1000}],
+      "olt": {"pons": 4, "onus_por_pon": 8, "semente": 23, "pico_mbps": 180,
+              "anomalias": {"2.3": {"rx": -26.2}, "1.5": {"status": "offline"}}}
+    }
+  },
+  "servidores": {
+    "SRV-DNS": {"servico": "srv-dns", "mgmt": "1.41", "nome_visivel": "SRV-DNS (DNS recursivo)"},
+    "SRV-RADIUS": {"servico": "srv-radius", "mgmt": "1.42", "nome_visivel": "SRV-RADIUS (autenticação PPPoE)"}
+  },
+  "_fluxos": "Tráfego gerado em cada enlace: o 'cliente' puxa o download (iperf3 -R) e envia o upload para o 'servidor'. Pico às 21h do dia do lab.",
+  "fluxos": [
+    {"id": "transito-a", "cliente": "BORDA-01", "servidor": "TRANSITO-A", "ip_servidor": "2.1", "porta": 5401, "pico_down": 240, "pico_up": 36, "contratado": 1000},
+    {"id": "transito-b", "cliente": "BORDA-01", "servidor": "TRANSITO-B", "ip_servidor": "2.9", "porta": 5403, "pico_down": 120, "pico_up": 18, "contratado": 150},
+    {"id": "ix", "cliente": "BORDA-01", "servidor": "IX-SP", "ip_servidor": "2.17", "porta": 5405, "pico_down": 120, "pico_up": 18, "contratado": 1000},
+    {"id": "borda-bng", "cliente": "BNG-01", "servidor": "BORDA-01", "ip_servidor": "2.25", "porta": 5407, "pico_down": 480, "pico_up": 72, "contratado": 10000},
+    {"id": "bng-agregacao", "cliente": "SW-AGREGACAO", "servidor": "BNG-01", "ip_servidor": "2.33", "porta": 5409, "pico_down": 480, "pico_up": 72, "contratado": 10000},
+    {"id": "uplink-olt-centro", "cliente": "OLT-CENTRO", "servidor": "SW-AGREGACAO", "ip_servidor": "2.41", "porta": 5411, "pico_down": 300, "pico_up": 45, "contratado": 1000, "da_olt": true},
+    {"id": "uplink-olt-norte", "cliente": "OLT-NORTE", "servidor": "SW-AGREGACAO", "ip_servidor": "2.49", "porta": 5413, "pico_down": 180, "pico_up": 27, "contratado": 1000, "da_olt": true}
+  ]
+}

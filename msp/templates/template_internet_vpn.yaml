@@ -1,0 +1,374 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 38b224f015de4940a6db67d7d5358eb7
+      name: 'NOTO TEMPLATES'
+  templates:
+    - uuid: 4c3ae1a685114f87aa241af11d00c29f
+      template: 'NOTO - LINK INTERNET'
+      name: 'NOTO - LINK INTERNET'
+      groups:
+        - name: 'NOTO TEMPLATES'
+      items:
+        - uuid: 3b56f4fba14a47909a78bfd08b2e09f6
+          name: Disponibilidade
+          type: SIMPLE
+          key: icmpping
+          history: 7d
+          trends: '0'
+          valuemap:
+            name: Disponibilidade
+          tags:
+            - tag: LINK
+              value: DISPONIBILIDADE
+          triggers:
+            - uuid: 0e172adcab0a42e7a4e82a5502ee72df
+              expression: 'sum(/NOTO - LINK INTERNET/icmpping,{$DISPONIBILIDADE_TIME})=0'
+              name: 'Sem resposta de Ping'
+              priority: DISASTER
+        - uuid: 204dfdd83d914690acd514edf29e0c56
+          name: 'Perda de pacote'
+          type: SIMPLE
+          key: icmppingloss
+          history: 7d
+          value_type: FLOAT
+          units: '%'
+          tags:
+            - tag: LINK
+              value: PERDA
+          triggers:
+            - uuid: 324237f740334d89850044035d73ae49
+              expression: 'avg(/NOTO - LINK INTERNET/icmppingloss,{$PERDA_TIME})>{$PERDA_WARN}'
+              name: 'Perda de pacote está Alta'
+              priority: HIGH
+              dependencies:
+                - name: 'Sem resposta de Ping'
+                  expression: 'sum(/NOTO - LINK INTERNET/icmpping,{$DISPONIBILIDADE_TIME})=0'
+        - uuid: fb7167a9857540f9a1616134344e95d0
+          name: Latência
+          type: SIMPLE
+          key: icmppingsec
+          history: 7d
+          value_type: FLOAT
+          units: ms
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1000'
+          tags:
+            - tag: LINK
+              value: LATENCIA
+          triggers:
+            - uuid: b330881cf49e4a92adf46500d3651264
+              expression: 'avg(/NOTO - LINK INTERNET/icmppingsec,{$LATENCIA_TIME})>{$LATENCIA_WARN}'
+              name: 'Latência está Alta'
+              priority: WARNING
+              dependencies:
+                - name: 'Perda de pacote está Alta'
+                  expression: 'avg(/NOTO - LINK INTERNET/icmppingloss,{$PERDA_TIME})>{$PERDA_WARN}'
+                - name: 'Sem resposta de Ping'
+                  expression: 'sum(/NOTO - LINK INTERNET/icmpping,{$DISPONIBILIDADE_TIME})=0'
+        - uuid: 3d039f5ec2704f0a8a175256a7784339
+          name: 'Agregado ({$INTERFACE})'
+          type: CALCULATED
+          key: net.if.agregado
+          units: bps
+          params: 'last(//net.if.in.linkprincipal)+ last(//net.if.out.linkprincipal)'
+          tags:
+            - tag: LINK
+              value: AGREGADO
+        - uuid: c8aaa19be76c4793af81f12b13482487
+          name: 'Erros ({$INTERFACE}) (Download)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.2.2.1.14.{$INDEX}'
+          key: net.if.in.error
+          history: 7d
+          tags:
+            - tag: DOWNLOAD
+              value: ERROR
+        - uuid: e847319096204f51993b5f19e192dc0d
+          name: 'Download ({$INTERFACE})'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.31.1.1.1.6.{$INDEX}'
+          key: net.if.in.linkprincipal
+          history: 7d
+          units: bps
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '8'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: BANDA
+              value: DOWNLOAD
+            - tag: LINK
+              value: PRINCIPAL
+            - tag: OPERADORA
+              value: XING
+          triggers:
+            - uuid: 8d4ca5cbf4d04a6db278069162b71a83
+              expression: 'avg(/NOTO - LINK INTERNET/net.if.in.linkprincipal,{$BANDA_TIME_DOWN})>{$BANDA_WARN_DOWN}'
+              name: 'Download está acima do limite'
+              priority: AVERAGE
+        - uuid: cccb6f092ef341bf86fc0e97b492d0f9
+          name: 'Erros ({$INTERFACE}) (Upload)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.2.2.1.20.{$INDEX}'
+          key: net.if.out.error
+          history: 7d
+          tags:
+            - tag: UPLOAD
+              value: ERROR
+        - uuid: d036b5f18f994d68adaf25e061657886
+          name: 'Upload ({$INTERFACE})'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.31.1.1.1.10.{$INDEX}'
+          key: net.if.out.linkprincipal
+          history: 7d
+          units: bps
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '8'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: BANDA
+              value: UPLOAD
+            - tag: LINK
+              value: PRINCIPAL
+            - tag: OPERADORA
+              value: XING
+          triggers:
+            - uuid: d3b1c2b46ee74df5927fd451746a52eb
+              expression: 'avg(/NOTO - LINK INTERNET/net.if.out.linkprincipal,{$BANDA_TIME_UP})>{$BANDA_WARN_UP}'
+              name: 'Upload está acima do limite'
+              priority: AVERAGE
+        - uuid: 19593c3a763e46fe92698f9154602cb4
+          name: 'Speed ({$INTERFACE})'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.2.2.1.5.{$INDEX}'
+          key: net.if.speed
+          history: 1d
+          trends: '0'
+          units: bps
+          tags:
+            - tag: LINK
+              value: SPEED
+        - uuid: 4f3fbeec14fe422fa360b00e8835f91c
+          name: 'Status ({$INTERFACE})'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.2.2.1.8.{$INDEX}'
+          key: net.if.status
+          history: 1d
+          trends: '0'
+          valuemap:
+            name: Status
+          tags:
+            - tag: LINK
+              value: STATUS
+      macros:
+        - macro: '{$BANDA_TIME_DOWN}'
+          value: 2m
+          description: 'Tempo para verificação de banda de Download'
+        - macro: '{$BANDA_TIME_UP}'
+          value: 2m
+          description: 'Tempo para verificação de banda de Upload'
+        - macro: '{$BANDA_WARN_DOWN}'
+          value: 3M
+          description: 'Tráfego limite Download'
+        - macro: '{$BANDA_WARN_UP}'
+          value: 3M
+          description: 'Tráfego limite Upload'
+        - macro: '{$DISPONIBILIDADE_TIME}'
+          value: 2m
+          description: 'Tempo para verificação disponibilidade'
+        - macro: '{$INDEX}'
+          value: '4'
+          description: 'Index da interface a ser monitorada'
+        - macro: '{$INTERFACE}'
+          value: em3
+          description: 'Nome da Interface'
+        - macro: '{$LATENCIA_TIME}'
+          value: 2m
+          description: 'Tempo para verificação latência'
+        - macro: '{$LATENCIA_WARN}'
+          value: '100'
+          description: 'Limite de latência'
+        - macro: '{$PERDA_TIME}'
+          value: 5m
+          description: 'Tempo para verificação da perda'
+        - macro: '{$PERDA_WARN}'
+          value: '80'
+          description: 'LImite de perda de pacote'
+      valuemaps:
+        - uuid: 888b07ccd8564f03b246d7ff9370faf6
+          name: Disponibilidade
+          mappings:
+            - value: '1'
+              newvalue: Online
+            - value: '0'
+              newvalue: Offline
+        - uuid: 2881ddfa107c4b7686287e7d80664dc9
+          name: Status
+          mappings:
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: down
+    - uuid: 40cbec71564f4d24b049e55da7d9acf1
+      template: 'NOTO - VPN'
+      name: 'NOTO - VPN'
+      groups:
+        - name: 'NOTO TEMPLATES'
+      items:
+        - uuid: 601c4f95b2b84e2ea322800c88c68b04
+          name: Disponibilidade
+          type: SIMPLE
+          key: icmpping
+          history: 7d
+          valuemap:
+            name: Disponibilidade
+          tags:
+            - tag: VPN
+              value: DISPONIBILIDADE
+          triggers:
+            - uuid: e429af9a81a744fd9a21f8cc104bf2bd
+              expression: 'sum(/NOTO - VPN/icmpping,{$DISPONIBILIDADE_TIME})=0'
+              name: 'Sem resposta de Ping'
+              priority: DISASTER
+        - uuid: f7f56801bae64d22941d295f981f4481
+          name: 'Perda de pacote'
+          type: SIMPLE
+          key: icmppingloss
+          history: 7d
+          value_type: FLOAT
+          units: '%'
+          tags:
+            - tag: VPN
+              value: PERDA
+          triggers:
+            - uuid: 9d93c16f66114d79a6ce934d685b4eb6
+              expression: 'avg(/NOTO - VPN/icmppingloss,{$PERDA_TIME})>{$PERDA_WARN}'
+              name: 'Perda de pacote está Alta'
+              priority: HIGH
+              dependencies:
+                - name: 'Sem resposta de Ping'
+                  expression: 'sum(/NOTO - VPN/icmpping,{$DISPONIBILIDADE_TIME})=0'
+        - uuid: 0f018ab5ddd042a2b9a512a6c6202fb4
+          name: Latência
+          type: SIMPLE
+          key: icmppingsec
+          history: 7d
+          value_type: FLOAT
+          units: ms
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1000'
+          tags:
+            - tag: VPN
+              value: LATENCIA
+          triggers:
+            - uuid: 618ede84c31544e8a40d51e64898d19b
+              expression: 'avg(/NOTO - VPN/icmppingsec,{$LATENCIA_TIME})>{$LATENCIA_WARN}'
+              name: 'Latência está Alta'
+              priority: WARNING
+        - uuid: ddb612d11e054282a1d6f37545e6b6b5
+          name: Download
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.31.1.1.1.6["index","1.3.6.1.2.1.31.1.1.1.1","{$INTERFACE}"]'
+          key: net.if.in.vpn
+          history: 7d
+          status: DISABLED
+          units: bps
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '8'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: VPN
+              value: DOWNLOAD
+          triggers:
+            - uuid: bc20be435eb74a61b8828c7c5b93facd
+              expression: 'avg(/NOTO - VPN/net.if.in.vpn,{$BANDA_TIME_DOWN})>{$BANDA_WARN_DOWN}'
+              name: 'Download está acima do limite'
+              priority: AVERAGE
+        - uuid: b9bb7e3f965b4268b5e61b640d485f2d
+          name: Upload
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.31.1.1.1.10["index","1.3.6.1.2.1.31.1.1.1.1","{$INTERFACE}"]'
+          key: net.if.out.vpn
+          history: 7d
+          status: DISABLED
+          units: bps
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '8'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: VPN
+              value: UPLOAD
+          triggers:
+            - uuid: 2438f1f0b6c74005a6a3d7a97c9426b1
+              expression: 'avg(/NOTO - VPN/net.if.out.vpn,{$BANDA_TIME_UP})>{$BANDA_WARN_UP}'
+              name: 'Upload está acima do limite'
+              priority: AVERAGE
+      macros:
+        - macro: '{$BANDA_TIME_DOWN}'
+          value: 2m
+          description: 'Tempo para verificação de banda de Download'
+        - macro: '{$BANDA_TIME_UP}'
+          value: 2m
+          description: 'Tempo para verificação de banda de Upload'
+        - macro: '{$BANDA_WARN_DOWN}'
+          value: 3M
+          description: 'Tráfego limite Download'
+        - macro: '{$BANDA_WARN_UP}'
+          value: 3M
+          description: 'Tráfego limite Upload'
+        - macro: '{$DISPONIBILIDADE_TIME}'
+          value: 2m
+          description: 'Tempo para verificação disponibilidade'
+        - macro: '{$INDEX}'
+          value: '4'
+          description: 'Index da interface a ser monitorada'
+        - macro: '{$INTERFACE}'
+          value: em3
+          description: 'Nome da Interface'
+        - macro: '{$LATENCIA_TIME}'
+          value: 2m
+          description: 'Tempo para verificação latência'
+        - macro: '{$LATENCIA_WARN}'
+          value: '100'
+          description: 'Limite de latência'
+        - macro: '{$PERDA_TIME}'
+          value: 5m
+          description: 'Tempo para verificação da perda'
+        - macro: '{$PERDA_WARN}'
+          value: '80'
+          description: 'LImite de perda de pacote'
+      valuemaps:
+        - uuid: 07f0edc743ce49e78ce544282187dd32
+          name: Disponibilidade
+          mappings:
+            - value: '1'
+              newvalue: Online
+            - value: '0'
+              newvalue: Offline
+        - uuid: 87eecdb91609448295ebc2c4b03ba55e
+          name: Status
+          mappings:
+            - value: '1'
+              newvalue: up
+            - value: '2'
+              newvalue: down
