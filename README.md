@@ -16,10 +16,10 @@ Todos os nomes e dados são fictícios.
 | Parte | Onde fica |
 |---|---|
 | Lab (scripts, containers, topologia, cenários) e o template NOTO - LINK INTERNET / VPN | neste repositório |
-| **Dashboards** (JSON + fonte) | entregues à parte: copie os `.json` para `msp/dashboards/` e `provedor/dashboards/` (o Grafana do lab carrega sozinho em ~15 s) ou importe no seu Grafana |
+| **Dashboards** (JSON) | entregues à parte: importe no Grafana (*Dashboards → New → Import*) e escolha o datasource **Zabbix**. O lab não cria pastas nem dashboards: cada um importa os que comprou, onde quiser |
 | **Templates do Kit Provedor** (pasta `Templates/`) | entregues à parte: coloque a pasta `Templates/` na raiz do projeto antes de `./lab.sh up --provedor` |
 
-Sem os dashboards, o lab sobe normalmente e o Zabbix coleta tudo; as pastas do Grafana ficam vazias.
+Sem os dashboards, o lab sobe normalmente e o Zabbix coleta tudo; o Grafana já vem com o plugin e o datasource Zabbix prontos.
 
 ## Instalar numa máquina nova (Ubuntu 24.04)
 
@@ -227,8 +227,7 @@ ficam salvos e são reaplicados se você rodar `./lab.sh up` de novo.
 
 ## Dashboard Kit NOC · Links de internet
 
-Arquivo: `msp/dashboards/kit-noc-links-internet.json` (no lab já aparece em
-*Dashboards → NOTO TI - Kit NOC*). Lê **somente** as chaves do NOTO - LINK INTERNET:
+Arquivo: `kit-noc-links-internet.json` (importado no Grafana). Lê **somente** as chaves do NOTO - LINK INTERNET:
 `icmpping`, `icmppingloss`, `icmppingsec`, `net.if.in.linkprincipal`, `net.if.out.linkprincipal`,
 `net.if.status`, `net.if.speed`.
 
@@ -253,7 +252,7 @@ Ocultas (Configurações → Variáveis): `util_warn` (80%), `lat_warn` (100 ms,
 > tem trends. O SLA usa esse histórico; não é preciso mudar o template.
 
 Para editar o visual: altere `dashboards-src/` (HTML/CSS/JS) e rode
-`python3 scripts/build_dashboards.py`. O Grafana do lab recarrega o JSON em ~15 s.
+`python3 scripts/build_dashboards.py` (gera os JSON e o pacote `Dashboards/`; fica só na máquina do professor).
 
 ### Importar em outro Grafana
 1. Plugins: `alexanderzobnin-zabbix-app` (habilite o app) e `marcusolsson-dynamictext-panel` (Business Text).
@@ -268,7 +267,7 @@ Mesmo visual dos originais (cabeçalho com relógio, cards de vidro, sparklines,
 **Nada fixo no código**: não existe mais `INFRA_CONFIG`. Tudo vem do Zabbix, então o comprador
 só importa o JSON e escolhe o datasource.
 
-| Arquivo (`msp/dashboards/`) | Template | O que mostra |
+| Arquivo | Template | O que mostra |
 |---|---|---|
 | `kit-noc-links.json` | NOTO - LINK INTERNET | um card por link: down/up, % da banda, 95th, latência, perda |
 | `kit-noc-top-consumo.json` | NOTO - LINK INTERNET | cards com busca (nome, operadora, cidade), 6 por página, botão **Diagnóstico do link** + Top 10 por % da banda |
@@ -302,8 +301,8 @@ só importa o JSON e escolhe o datasource.
 
 ## Dashboards do Kit Provedor
 
-Pasta *Dashboards → NOTO TI - Kit Provedor* no lab; JSON em `provedor/dashboards/`; para os alunos em
-`Dashboards/06` e `Dashboards/07`. Mesmo visual do Kit NOC.
+Entregues à parte (`Dashboards/06` e `Dashboards/07`): o aluno importa no Grafana (*Dashboards → New → Import*)
+e escolhe o datasource **Zabbix**. Mesmo visual do Kit NOC.
 
 | Dashboard | Lê | Convenção que o aluno segue no equipamento dele |
 |---|---|---|
@@ -331,8 +330,8 @@ Pasta *Dashboards → NOTO TI - Kit Provedor* no lab; JSON em `provedor/dashboar
 | `compose.yaml` | serviços e redes |
 | `lab.sh`, `scripts/lab.py` | automação do lab |
 | `node/` | imagem dos nós (FW, NOC, operadora e equipamentos do provedor) |
-| `msp/` | Kit NOC: `links.csv`, `vpns.csv`, `templates/` (NOTO - LINK INTERNET e NOTO - VPN originais), `dashboards/` |
-| `provedor/` | Kit Provedor: `topologia.json` (equipamentos, enlaces, BGP, OLTs, fluxos), `dashboards/` |
+| `msp/` | Kit NOC: `links.csv`, `vpns.csv`, `templates/` (NOTO - LINK INTERNET e NOTO - VPN originais) |
+| `provedor/` | Kit Provedor: `topologia.json` (equipamentos, enlaces, BGP, OLTs, fluxos) |
 | `node/trafego.sh` | gerador de tráfego dos links MSP |
 | `node/provedor.py` | configura cada equipamento do provedor (interfaces, SNMP, FRR/BGP, tráfego) |
 | `node/olt_sim.py` | OLT simulada (SNMP pass_persist, OIDs fictícios do padrão NOTO TI de OLT) |
@@ -340,4 +339,4 @@ Pasta *Dashboards → NOTO TI - Kit Provedor* no lab; JSON em `provedor/dashboar
 | `scripts/build_dashboards.py` | gera os JSON dos dashboards |
 | `Templates/` | templates Zabbix do Kit Provedor (OLTs, MikroTik, Huawei, BGP, rádios, servidores) com alertas em cascata; `LEIA-ME.md`, `CORRECOES.md` e o gerador em `_gerador/`. **Fora do git** |
 | `Dashboards/` | pacote para os alunos: uma pasta por dashboard (JSON + preview.png + LEIA-ME). Gerado pelo `build_dashboards.py`, **fora do git** |
-| `grafana/provisioning/` | plugin, datasource e dashboards |
+| `grafana/provisioning/` | plugin Zabbix e datasource (sem dashboards: o aluno importa) |

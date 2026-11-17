@@ -11,10 +11,8 @@ Dashboards/
 Templates/
 
 # dashboards (produto): ficam só na máquina do professor e são entregues à parte.
-# As pastas ficam no repositório (vazias) para o Grafana do lab carregar o que for colocado nelas.
+# O aluno importa os JSON direto no Grafana (o lab não cria pastas nem dashboards).
 dashboards-src/
 scripts/build_dashboards.py
-msp/dashboards/*
-!msp/dashboards/.gitkeep
-provedor/dashboards/*
-!provedor/dashboards/.gitkeep
+msp/dashboards/
+provedor/dashboards/

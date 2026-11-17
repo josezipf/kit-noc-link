@@ -112,8 +112,6 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./msp/dashboards:/var/lib/grafana/dashboards-noto/msp:ro
-      - ./provedor/dashboards:/var/lib/grafana/dashboards-noto/provedor:ro
     ports: ["${LAB_BIND:-127.0.0.1}:${LAB_GRAFANA_PORT}:3000"]
     networks: [backend]
 
