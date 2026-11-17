@@ -1141,6 +1141,9 @@ def cmd_status(args):
     bad = [row["Service"] for row in rows if row.get("State") != "running" or row.get("Health") not in ("", "healthy")]
     say(f"Kits: {', '.join(kits)} | containers: {len(rows)} em execução" + (f"; com problema: {', '.join(bad)}" if bad else ""))
     check_collection(env, kits)
+    if "zabbix-web" not in {row["Service"] for row in rows}:
+        say("Modo só equipamentos (sem o Zabbix/Grafana do lab). Cadastro na produção: ./lab.sh producao ligar")
+        return
     if read_state().get("hosts"):
         api = Api(env).login()
         say("Itens no Zabbix:")
@@ -1186,8 +1189,46 @@ def cmd_creds(args):
     show_access(read_env())
 
 
+LAB_MONITORAMENTO = ["grafana", "zabbix-web", "zabbix-server", "db"]
 PROD_PROJETO = "nototi-producao"
 PROD_REDES = {"msp": ("internet", "4.250"), "provedor": ("core", "1.250")}   # rede do lab e IP do Zabbix de produção nela
+
+
+def producao_rodando():
+    return run(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={PROD_PROJETO}",
+                "--filter", "label=com.docker.compose.service=zabbix-server"], capture=True).stdout.strip()
+
+
+def cmd_equipamentos(args):
+    """Sobe só os equipamentos do lab (os mesmos do ./lab.sh up, com tráfego e cenários), sem o Zabbix e o Grafana
+    do lab: para demonstrar em aula o cadastro manual na produção (./producao/producao.sh)."""
+    require_docker()
+    env = initialize()
+    chosen = [kit for kit in KITS if getattr(args, kit)]
+    if chosen:
+        set_env("LAB_KITS", ",".join(chosen))
+    elif "LAB_KITS" not in env:
+        raise LabError("Escolha o kit: ./lab.sh equipamentos --msp, --provedor ou os dois.")
+    env = read_env()
+    kits = active_kits(env)
+    names = {"msp": "Kit NOC (MSP)", "provedor": "Kit Provedor"}
+    say(f"Só os equipamentos do lab: {', '.join(names[k] for k in kits)} (sem Zabbix/Grafana do lab)")
+    for kit in KITS:
+        if kit not in kits:
+            compose("rm", "-sf", *kit_services(kit), kits=KITS, capture=True, check=False)
+    compose("stop", *LAB_MONITORAMENTO, capture=True, check=False)
+    compose("build", "noc")
+    services = [s for kit in kits for s in kit_services(kit)]
+    compose("up", "-d", "--no-deps", "noc", *services)
+    say("Aguardando os equipamentos responderem SNMP...")
+    wait_snmp(env, kits)
+    reapply_scenarios(kits)
+    say(f"OK  {len(services)} equipamentos no ar. Os cenários (./lab.sh fail, degrade, saturate, onu...) funcionam igual.")
+    if producao_rodando():
+        say()
+        cmd_producao(argparse.Namespace(acao="ligar"))
+    else:
+        say("Suba a produção (./producao/producao.sh up) e rode ./lab.sh producao ligar para ela alcançar os equipamentos.")
 
 
 def cmd_producao(args):
@@ -1195,8 +1236,7 @@ def cmd_producao(args):
     cadastro manual com equipamentos "reais" (os containers do lab). Não mexe em nada dentro do Zabbix de produção."""
     env = read_env()
     require_docker()
-    zbx = run(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={PROD_PROJETO}",
-               "--filter", "label=com.docker.compose.service=zabbix-server"], capture=True).stdout.strip()
+    zbx = producao_rodando()
     if not zbx:
         raise LabError("A produção não está rodando. Suba antes com ./producao/producao.sh up.")
     kits = active_kits(env)
@@ -1233,6 +1273,8 @@ def cmd_producao(args):
             tpls = " + ".join(TPL_PROV[k] for k in TEMPLATES_POR_PAPEL[d["papel"]])
             say(f"  {d['host']:<16} {ip(env, d['mgmt']):<14} {tpls}")
         say("  Em todos: macro de host {$FILTRO_REDE} = ^ge- (monitora só as interfaces de enlace)")
+        for d in prov_servidores():
+            say(f"  {d['host']:<16} {ip(env, d['mgmt']):<14} interface AGENTE (porta 10050): {TPL_PROV['disp']} + {TPL_PROV['linux']}")
     say()
     say("Se a produção for recriada (update/restore), rode ./lab.sh producao ligar de novo.")
 
@@ -1288,6 +1330,10 @@ def main():
     logs = sub.add_parser("logs", help="logs de um serviço")
     logs.add_argument("service", nargs="?")
     logs.set_defaults(func=cmd_logs)
+    eq = sub.add_parser("equipamentos", help="sobe só os equipamentos do lab (sem Zabbix/Grafana) para demonstrar na produção")
+    eq.add_argument("--msp", action="store_true", help="firewalls dos clientes do Kit NOC")
+    eq.add_argument("--provedor", action="store_true", help="equipamentos do Kit Provedor")
+    eq.set_defaults(func=cmd_equipamentos)
     prod = sub.add_parser("producao", help="liga/desliga o Zabbix de produção à rede do lab (praticar o cadastro manual)")
     prod.add_argument("acao", choices=["ligar", "desligar"])
     prod.set_defaults(func=cmd_producao)

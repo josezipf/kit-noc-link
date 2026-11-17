@@ -210,7 +210,7 @@ services:
     profiles: [provedor]
     restart: unless-stopped
     hostname: SRV-DNS
-    environment: {ZBX_HOSTNAME: SRV-DNS, ZBX_SERVER_HOST: "${LAB_NET_PREFIX}.1.10", ZBX_ACTIVE_ALLOW: "false"}
+    environment: {ZBX_HOSTNAME: SRV-DNS, ZBX_SERVER_HOST: "${LAB_NET_PREFIX}.1.10,${LAB_NET_PREFIX}.1.250", ZBX_ACTIVE_ALLOW: "false"}
     networks:
       core: {ipv4_address: "${LAB_NET_PREFIX}.1.41"}
 
@@ -219,7 +219,7 @@ services:
     profiles: [provedor]
     restart: unless-stopped
     hostname: SRV-RADIUS
-    environment: {ZBX_HOSTNAME: SRV-RADIUS, ZBX_SERVER_HOST: "${LAB_NET_PREFIX}.1.10", ZBX_ACTIVE_ALLOW: "false"}
+    environment: {ZBX_HOSTNAME: SRV-RADIUS, ZBX_SERVER_HOST: "${LAB_NET_PREFIX}.1.10,${LAB_NET_PREFIX}.1.250", ZBX_ACTIVE_ALLOW: "false"}
     networks:
       core: {ipv4_address: "${LAB_NET_PREFIX}.1.42"}
 
