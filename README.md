@@ -21,6 +21,34 @@ Todos os nomes e dados são fictícios.
 
 Sem os dashboards, o lab sobe normalmente e o Zabbix coleta tudo; as pastas do Grafana ficam vazias.
 
+## Instalar numa máquina nova (Ubuntu 24.04)
+
+Testado numa VM Ubuntu 24.04 zerada (4 vCPU, 8 GB de RAM).
+
+```bash
+# 1. Docker Engine + Compose (repositório oficial da Docker)
+sudo apt-get update && sudo apt-get install -y ca-certificates curl git python3
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER      # depois saia e entre de novo na sessão (ou: newgrp docker)
+
+# 2. O lab
+git clone https://github.com/josezipf/kit-noc-link.git
+cd kit-noc-link
+./lab.sh up --msp                  # Kit NOC (MSP)
+```
+
+* **VM ou servidor (acessar o Grafana de outro computador):** na primeira vez, suba com
+  `LAB_BIND=0.0.0.0 ./lab.sh up --msp`. Se já subiu, troque `LAB_BIND=0.0.0.0` no arquivo `.env`
+  e rode o `./lab.sh up` de novo. O `lab.sh` mostra o endereço com o IP da máquina. Sem isso, as
+  portas ficam só em `127.0.0.1` (acesso apenas na própria máquina).
+* **Disco:** reserve ~10 GB livres (imagens + banco). O instalador do Ubuntu costuma usar só metade
+  do disco no LVM; para usar o resto: `sudo lvextend -r -l +100%FREE /dev/ubuntu-vg/ubuntu-lv`.
+
 ## Subir o lab
 
 ```bash

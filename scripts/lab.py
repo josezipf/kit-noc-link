@@ -1040,9 +1040,18 @@ def cmd_up(args):
         raise LabError("Algo ainda não coletou. Rode ./lab.sh status em 1 minuto ou veja ./lab.sh logs <serviço>.")
 
 
+def ip_da_maquina():
+    """IP pelo qual esta máquina sai para a rede (nenhum pacote é enviado: só consulta a rota)."""
+    with contextlib.suppress(OSError), socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("192.0.2.1", 9))
+        return s.getsockname()[0]
+    return "IP-desta-maquina"
+
+
 def show_access(env):
     bind = env.get("LAB_BIND", "127.0.0.1")
-    host = "localhost" if bind in ("127.0.0.1", "0.0.0.0") else bind
+    # 0.0.0.0 = aberto na rede (VM/servidor): mostra o IP real, que é o que se digita no navegador de outro computador
+    host = "localhost" if bind == "127.0.0.1" else ip_da_maquina() if bind == "0.0.0.0" else bind
     say()
     say(f"Zabbix : http://{host}:{env['LAB_ZBX_PORT']}   usuário Admin   senha {env['LAB_ADMIN_PASSWORD']}")
     say(f"Grafana: http://{host}:{env['LAB_GRAFANA_PORT']}   usuário admin   senha {env['LAB_GRAFANA_PASSWORD']}")
