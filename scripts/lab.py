@@ -521,6 +521,15 @@ def provision_provedor(api, env, tpl, groups, community):
     return hosts
 
 
+def forca_descoberta(api, hostids):
+    """Roda já as descobertas (LLD). No lab, recriar um container renumera as interfaces (ifIndex): sem isso,
+    os nomes dos itens só seriam corrigidos na próxima descoberta (1 h)."""
+    regras = api.call("discoveryrule.get", {"output": ["itemid"], "hostids": hostids, "filter": {"status": 0}})
+    for i in range(0, len(regras), 50):
+        with contextlib.suppress(LabError):
+            api.call("task.create", [{"type": 6, "request": {"itemid": r["itemid"]}} for r in regras[i:i + 50]])
+
+
 def check_now(api, hostids):
     """Pede ao Zabbix para coletar já os itens que ainda não têm valor.
     Só itens novos: uma coleta extra 1 s depois da normal distorce itens "por segundo" (tráfego)."""
