@@ -4,7 +4,9 @@
 name: nototi-dashboards-links
 
 x-node: &node
-  build: ./node
+  # o ./lab.sh constrói a imagem uma vez (serviço noc); sem provenance o ID não muda a cada build e o
+  # docker compose não recria os containers à toa (ifIndex renumerado).
+  build: {context: ./node, provenance: false}
   image: nototi-dashboards-links-node:1
   init: true
   restart: unless-stopped

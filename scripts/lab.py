@@ -1023,7 +1023,8 @@ def cmd_up(args):
         if kit not in kits:
             compose("rm", "-sf", *kit_services(kit), kits=KITS, capture=True, check=False)
     say("Construindo a imagem dos nós e subindo os containers...")
-    compose("up", "-d", "--build", "--remove-orphans")
+    compose("build", "noc")   # uma imagem para todos os nós: construir por serviço gera IDs diferentes e recria tudo
+    compose("up", "-d", "--remove-orphans")
     # cenários saem durante o cadastro (precisa do SNMP) e voltam no fim
     for link in targets(kits):
         with contextlib.suppress(LabError):
