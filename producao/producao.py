@@ -268,16 +268,17 @@ def verifica_arquivos(kits):
             raise Erro(f"Não achei {TPL_MSP.relative_to(RAIZ)}. Use a pasta completa do repositório kit-noc-link.")
         if hashlib.md5(TPL_MSP.read_bytes()).hexdigest() != TPL_MSP_MD5:
             raise Erro(f"{TPL_MSP.name} foi alterado. Use o arquivo original do kit.")
-    if "provedor" in kits and not TPL_PROVEDOR.exists():
-        raise Erro(f"Não achei {TPL_PROVEDOR.relative_to(RAIZ)}. Copie a pasta Templates/ do Kit Provedor para "
-                   f"{RAIZ} antes do ./producao.sh up --provedor.")
+    # Templates/ e Dashboards/ (pacotes pagos) podem chegar depois: o up instala sem eles e avisa
 
 
 def importa_templates(api, kits):
     if "msp" in kits:
         api.call("configuration.import", {"format": "yaml", "rules": REGRAS, "source": TPL_MSP.read_text(encoding="utf-8")})
         diz("  OK  templates do Kit NOC: NOTO - LINK INTERNET, NOTO - VPN")
-    if "provedor" in kits:
+    if "provedor" in kits and not TPL_PROVEDOR.exists():
+        diz("  --  pasta Templates/ do Kit Provedor não encontrada: templates não importados. Descompacte o pacote do")
+        diz(f"      Kit Provedor em {RAIZ} e rode ./producao/producao.sh up de novo (não apaga nada).")
+    elif "provedor" in kits:
         texto = TPL_PROVEDOR.read_text(encoding="utf-8")
         renomeia_por_uuid(api, texto)
         api.call("configuration.import", {"format": "yaml", "source": texto,
@@ -291,7 +292,8 @@ def configura_zabbix(api, env, kits, community):
         for g in GRUPOS[kit]:
             if not api.um("hostgroup.get", {"name": [g]}, "groupid"):
                 api.call("hostgroup.create", {"name": g})
-    diz(f"  OK  grupos de hosts: {', '.join(g for k in kits for g in GRUPOS[k])}")
+    if kits:
+        diz(f"  OK  grupos de hosts: {', '.join(g for k in kits for g in GRUPOS[k])}")
 
     macro = api.call("usermacro.get", {"globalmacro": True, "output": ["globalmacroid", "value"], "filter": {"macro": "{$SNMP_COMMUNITY}"}})
     if not macro:
@@ -368,8 +370,11 @@ def espera_grafana(env):
 
 
 def importa_dashboards(env, kits):
+    if not kits:
+        return
     if not DASHBOARDS.is_dir():
-        diz(f"  --  pasta {DASHBOARDS.name}/ não encontrada: nenhum dashboard importado (importe pelo Grafana quando quiser)")
+        diz(f"  --  pasta {DASHBOARDS.name}/ não encontrada: nenhum dashboard importado. Descompacte o pacote do kit e rode")
+        diz("      ./producao/producao.sh up de novo, ou importe pelo Grafana (Dashboards → New → Import).")
         return
     for arq in sorted(DASHBOARDS.glob("*/*.json")):
         kit = next((k for k in kits if PREFIXO_DASH[k] in arq.parent.name), None)
@@ -405,13 +410,11 @@ def mostra_acesso(env):
 def cmd_up(args):
     exige_docker()
     pedidos = [k for k in KITS if getattr(args, k)]
-    if not pedidos and not ENV.exists():
-        raise Erro("Escolha o(s) kit(s) comprado(s): ./producao.sh up --provedor, --msp ou os dois.")
-    verifica_arquivos(pedidos or kits_ativos(le_env()))
+    verifica_arquivos(pedidos)
     env = inicializa(pedidos)
     kits = kits_ativos(env)
     verifica_arquivos(kits)
-    diz(f"Kits desta instalação: {', '.join(NOME_KIT[k] for k in kits)}")
+    diz(f"Kits desta instalação: {', '.join(NOME_KIT[k] for k in kits) if kits else 'nenhum ainda (só Zabbix + Grafana)'}")
     diz("Baixando as imagens e subindo os containers...")
     compose("up", "-d", "--remove-orphans")
     api, versao = espera_zabbix(env)
@@ -426,13 +429,13 @@ def cmd_up(args):
     mostra_acesso(env)
     diz()
     diz("Pronto. Próximo passo: cadastre os equipamentos (Coleta de dados → Hosts) com os templates do LEIA-ME.")
-    diz("Faça backup com ./producao.sh backup (e guarde o arquivo fora deste servidor).")
+    diz("Faça backup com ./producao/producao.sh backup (e guarde o arquivo fora deste servidor).")
 
 
 def cmd_status(args):
     env = le_env()
     exige_docker()
-    diz(f"Kits: {', '.join(NOME_KIT[k] for k in kits_ativos(env))}")
+    diz(f"Kits: {', '.join(NOME_KIT[k] for k in kits_ativos(env)) or 'nenhum (só Zabbix + Grafana)'}")
     diz(compose("ps", "--format", "  {{.Service}}\t{{.Status}}", capturar=True).stdout.rstrip() or "  nenhum container rodando")
     try:
         api = Zabbix(env)

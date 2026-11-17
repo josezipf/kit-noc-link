@@ -30,6 +30,11 @@ cd kit-noc-link
 ./producao/producao.sh up --provedor --msp --community SUA_COMMUNITY  # os dois
 ```
 
+**Ainda não recebeu os pacotes (`Templates/`, `Dashboards/`)?** Pode instalar mesmo assim, inclusive sem escolher
+kit: `./producao/producao.sh up`. Ele sobe Zabbix e Grafana prontos e avisa o que ficou faltando. Quando os
+pacotes chegarem, descompacte na pasta `kit-noc-link` e rode o `up` de novo (com `--provedor`/`--msp`, se ainda não
+escolheu): ele importa os templates e os dashboards sem apagar nada do que você já cadastrou.
+
 No fim, o comando mostra os endereços e as senhas (geradas na hora, só desta instalação):
 
 ```
