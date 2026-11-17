@@ -67,6 +67,21 @@ cd kit-noc-link
 ./lab.sh snmpwalk <host> [OID]   # SNMP visto da rede do Zabbix
 ```
 
+### Demonstrar na produção com os equipamentos do lab
+
+Para mostrar o cadastro manual na produção (`producao/`) usando os equipamentos do lab como se fossem reais:
+
+```bash
+./producao/producao.sh up               # produção zerada (se ainda não subiu)
+./lab.sh equipamentos --msp             # só os firewalls do Kit NOC (ou --provedor), sem o Zabbix/Grafana do lab
+./lab.sh producao ligar                 # a produção passa a alcançar os equipamentos (o equipamentos já faz isso)
+./lab.sh producao desligar              # desfaz a ligação
+```
+
+O `equipamentos` mostra a tabela do que cadastrar: IP, community, `{$INDEX}`, nome visível e macros.
+Os cenários (`fail`, `degrade`, `saturate`, `onu`, `bgp`...) funcionam igual, e os alertas aparecem na produção.
+A VPN (`NOTO - VPN`) não entra nesse modo: o Zabbix de produção não tem rota para as LANs atrás dos firewalls.
+
 Requisitos: Linux com Docker Engine + Docker Compose v2 e python3. O lab escolhe sozinho
 uma faixa `10.x` livre e portas livres (Zabbix a partir de 8280, Grafana a partir de 3300),
 publicadas só em `127.0.0.1`. Para abrir na rede: `LAB_BIND=0.0.0.0 ./lab.sh up` na primeira vez.

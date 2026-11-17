@@ -73,6 +73,10 @@ Nos equipamentos, use as **mesmas convenções do laboratório**. É isso que fa
 * **OLT de fabricante sem template pronto**: clone o `NOTO TI - OLT Lab` e troque só os OIDs
   (`Templates/05 - OLTs (padrão NOTO TI)/PADRAO-OLT.md`).
 
+**Para treinar ou demonstrar sem equipamento real:** `./lab.sh equipamentos --msp` (ou `--provedor`) sobe só
+os equipamentos do laboratório e liga a produção a eles. Ele mostra o IP, a community e as macros de cada um.
+Cadastre-os como se fossem reais (veja "Demonstrar na produção" no `README.md`).
+
 **Primeiro equipamento de cada modelo:** confira em *Monitoramento → Dados recentes* se os itens têm valor.
 Os OIDs de fabricante vêm dos templates originais. Se algum item ficar "sem suporte", ajuste o OID no template.
 
