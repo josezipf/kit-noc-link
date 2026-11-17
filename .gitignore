@@ -21,3 +21,7 @@ provedor/dashboards/
 producao/.env
 producao/.env.tmp
 producao/backups/
+
+# Pacotes pagos dos alunos (gerados por scripts/empacotar.py)
+Pacotes/
+scripts/empacotar.py
