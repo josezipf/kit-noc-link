@@ -4,6 +4,10 @@ Laboratório em Docker que gera dados realistas de monitoramento para construir,
 gravar os dashboards Grafana do **Kit NOC (MSP)** e do **Kit Provedor**.
 Todos os nomes e dados são fictícios.
 
+> **Produção:** para monitorar os equipamentos reais (no provedor ou no cliente), use a pasta
+> [`producao/`](producao/LEIA-ME.md). Ela sobe Zabbix + Grafana prontos, com os templates e os dashboards
+> dos kits, sem nada do laboratório: `./producao/producao.sh up --provedor --msp`.
+
 | Componente | Versão |
 |---|---|
 | Zabbix server / web | 7.0 LTS (PostgreSQL 16) |
@@ -16,6 +20,7 @@ Todos os nomes e dados são fictícios.
 | Parte | Onde fica |
 |---|---|
 | Lab (scripts, containers, topologia, cenários) e o template NOTO - LINK INTERNET / VPN | neste repositório |
+| Produção (`producao/`: Zabbix + Grafana prontos para os equipamentos reais) | neste repositório |
 | **Dashboards** (JSON) | entregues à parte: importe no Grafana (*Dashboards → New → Import*) e escolha o datasource **Zabbix**. O lab não cria pastas nem dashboards: cada um importa os que comprou, onde quiser |
 | **Templates do Kit Provedor** (pasta `Templates/`) | entregues à parte: coloque a pasta `Templates/` na raiz do projeto antes de `./lab.sh up --provedor` |
 
@@ -58,7 +63,7 @@ cd kit-noc-link
 ./lab.sh status    # containers, rede, itens, cenário de cada link e acessos
 ./lab.sh creds     # URLs e senhas (geradas no .env na primeira execução)
 ./lab.sh down      # para tudo, mantém o histórico
-./lab.sh destroy   # apaga tudo, inclusive o histórico
+./lab.sh destroy   # apaga tudo, inclusive o histórico (pede confirmação: digite APAGAR)
 ./lab.sh snmpwalk <host> [OID]   # SNMP visto da rede do Zabbix
 ```
 
@@ -340,3 +345,4 @@ e escolhe o datasource **Zabbix**. Mesmo visual do Kit NOC.
 | `Templates/` | templates Zabbix do Kit Provedor (OLTs, MikroTik, Huawei, BGP, rádios, servidores) com alertas em cascata; `LEIA-ME.md`, `CORRECOES.md` e o gerador em `_gerador/`. **Fora do git** |
 | `Dashboards/` | pacote para os alunos: uma pasta por dashboard (JSON + preview.png + LEIA-ME). Gerado pelo `build_dashboards.py`, **fora do git** |
 | `grafana/provisioning/` | plugin Zabbix e datasource (sem dashboards: o aluno importa) |
+| `producao/` | instalação de produção: `producao.sh` (up, status, backup, restore, update, destroy), `compose.yaml` e `LEIA-ME.md` |

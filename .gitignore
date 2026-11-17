@@ -16,3 +16,8 @@ dashboards-src/
 scripts/build_dashboards.py
 msp/dashboards/
 provedor/dashboards/
+
+# Produção: senhas e backups ficam só no servidor
+producao/.env
+producao/.env.tmp
+producao/backups/

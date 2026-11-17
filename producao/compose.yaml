@@ -1,0 +1,109 @@
+# NOTO TI - Monitoramento em produção (Kit NOC e Kit Provedor)
+# Zabbix 7.0 LTS + PostgreSQL + Grafana com o plugin Zabbix. Sem nada do laboratório.
+# Não edite as variáveis PROD_*: elas ficam no .env, gerado pelo ./producao.sh up.
+name: nototi-producao
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options: {max-size: 20m, max-file: "3"}
+
+services:
+  db:
+    <<: *logging
+    image: postgres:16-alpine
+    restart: unless-stopped
+    command: [postgres, -c, max_connections=200, -c, shared_buffers=512MB, -c, effective_cache_size=2GB,
+              -c, work_mem=8MB, -c, maintenance_work_mem=256MB, -c, wal_compression=on]
+    environment:
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${PROD_DB_PASSWORD:?Execute ./producao.sh up}
+      TZ: ${PROD_TZ:-America/Sao_Paulo}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [monitoramento]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U zabbix -d zabbix"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+  zabbix-server:
+    <<: *logging
+    image: zabbix/zabbix-server-pgsql:${PROD_ZABBIX_TAG:-alpine-7.0-latest}
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${PROD_DB_PASSWORD}
+      TZ: ${PROD_TZ:-America/Sao_Paulo}
+      ZBX_STARTPINGERS: "5"
+      ZBX_STARTPOLLERS: "10"
+      ZBX_STARTDISCOVERERS: "3"
+      ZBX_CACHESIZE: 256M
+      ZBX_VALUECACHESIZE: 256M
+      ZBX_HISTORYCACHESIZE: 64M
+      ZBX_HISTORYINDEXCACHESIZE: 16M
+      ZBX_TRENDCACHESIZE: 32M
+      ZBX_TIMEOUT: "10"
+    # ping (ICMP) precisa de NET_RAW; a coleta sai pela rede deste servidor até a gerência dos equipamentos
+    cap_add: [NET_RAW]
+    # 10051: agentes ativos e proxies Zabbix
+    ports: ["${PROD_BIND:-0.0.0.0}:${PROD_ZBX_SERVER_PORT:-10051}:10051"]
+    networks: [monitoramento]
+
+  zabbix-web:
+    <<: *logging
+    image: zabbix/zabbix-web-nginx-pgsql:${PROD_ZABBIX_TAG:-alpine-7.0-latest}
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+      zabbix-server: {condition: service_started}
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${PROD_DB_PASSWORD}
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_NAME: ${PROD_NOME:-NOTO TI - Monitoramento}
+      PHP_TZ: ${PROD_TZ:-America/Sao_Paulo}
+    ports: ["${PROD_BIND:-0.0.0.0}:${PROD_ZBX_PORT:-8080}:8080"]
+    networks: [monitoramento]
+
+  grafana:
+    <<: *logging
+    image: grafana/grafana:${PROD_GRAFANA_TAG:-12.3.0}
+    restart: unless-stopped
+    depends_on:
+      zabbix-web: {condition: service_started}
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${PROD_GRAFANA_PASSWORD}
+      GF_PLUGINS_PREINSTALL_SYNC: alexanderzobnin-zabbix-app@6.10.3,marcusolsson-dynamictext-panel@6.3.1
+      GF_PANELS_DISABLE_SANITIZE_HTML: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: ${PROD_TZ:-America/Sao_Paulo}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      PROD_ZBX_GRAFANA_PASSWORD: ${PROD_ZBX_GRAFANA_PASSWORD}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports: ["${PROD_BIND:-0.0.0.0}:${PROD_GRAFANA_PORT:-3000}:3000"]
+    networks: [monitoramento]
+
+networks:
+  # faixa de testes de rede (RFC 2544), quase nunca usada na gerência de provedores e empresas;
+  # se colidir com a sua rede, troque PROD_REDE no .env antes do primeiro up
+  monitoramento:
+    ipam:
+      config: [{subnet: "${PROD_REDE:-198.18.250.0/24}"}]
+
+volumes:
+  postgres-data:
+  grafana-data:

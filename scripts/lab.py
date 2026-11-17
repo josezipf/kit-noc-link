@@ -1161,6 +1161,14 @@ def cmd_down(args):
 
 def cmd_destroy(args):
     require_docker()
+    say("ATENÇÃO: isto APAGA o laboratório inteiro: containers, Zabbix (hosts, histórico), Grafana (dashboards) e o .env.")
+    say("Os dados apagados NÃO poderão ser recuperados.")
+    try:
+        resposta = input("Tem certeza? Digite APAGAR para confirmar ou Enter para cancelar: ").strip()
+    except EOFError:
+        resposta = ""
+    if resposta != "APAGAR":
+        raise LabError("Cancelado. Nada foi apagado.")
     if ENV_PATH.exists():
         compose("down", "-v", "--remove-orphans", kits=KITS)
     for path in (ENV_PATH, STATE_PATH):
