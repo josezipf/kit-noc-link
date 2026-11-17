@@ -1044,7 +1044,9 @@ def cmd_up(args):
     ok = check_collection(env, kits)
     say("Verificando os itens no Zabbix (a primeira descoberta leva ~1 minuto):")
     ok &= check_items(api, kits, wait=not args.no_wait)
-    # itens criados pela descoberta com intervalo longo (ex.: AS remoto do BGP, 1 h) ganham a 1ª coleta agora
+    # itens criados pela descoberta com intervalo longo (ex.: AS remoto do BGP, 1 h) ganham a 1ª coleta agora;
+    # antes, espera o Zabbix carregar os itens novos no cache (ZBX_CACHEUPDATEFREQUENCY = 10 s)
+    time.sleep(15)
     check_now(api, list(hosts.values()))
     show_access(env)
     if not ok:
