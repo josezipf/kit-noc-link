@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """NOTO TI - Monitoramento em produção (Kit NOC e Kit Provedor).
 
-Sobe Zabbix 7.0 LTS + PostgreSQL + Grafana em containers e deixa tudo pronto para cadastrar os equipamentos reais:
-templates NOTO importados, grupos de hosts, macro da community SNMP, Grafana ligado ao Zabbix e dashboards importados.
-Nada do laboratório (equipamentos simulados) entra aqui.
+Sobe Zabbix 7.0 LTS + PostgreSQL + Grafana em containers: instalação zerada e pronta para usar (Grafana já ligado ao
+Zabbix). Templates e dashboards o aluno importa pela tela; como atalho opcional, "importar" faz isso a partir das
+pastas Templates/ e Dashboards/ do pacote. Nada do laboratório (equipamentos simulados) entra aqui.
 
-  ./producao.sh up --provedor --msp      instala/atualiza a configuração (pode rodar de novo sem perder nada)
+  ./producao.sh up                       instala (pode rodar de novo sem perder nada)
+  ./producao.sh importar --provedor --msp   atalho: importa templates e dashboards das pastas do pacote
   ./producao.sh status | creds | logs
   ./producao.sh backup | restore <arquivo> | update | down | destroy
 """
@@ -112,19 +113,12 @@ def porta_livre(preferida):
     raise Erro(f"Nenhuma porta livre a partir de {preferida}.")
 
 
-def inicializa(kits):
+def inicializa():
     if ENV.exists():
-        env = le_env()
-        atuais = [k for k in env.get("PROD_KITS", "").split(",") if k]
-        novos = sorted(set(atuais) | set(kits), key=KITS.index)
-        if novos != atuais:
-            env["PROD_KITS"] = ",".join(novos)
-            grava_env(env)
-        return env
+        return le_env()
     if roda(["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={PROJETO}"], capturar=True).stdout.strip():
         raise Erro(f"Já existe uma instalação {PROJETO} sem o .env desta pasta. Restaure o .env (ou um backup) antes de continuar.")
     env = {
-        "PROD_KITS": ",".join(kits),
         "PROD_BIND": os.environ.get("PROD_BIND", "0.0.0.0"),
         "PROD_ZBX_PORT": str(porta_livre(int(os.environ.get("PROD_ZBX_PORT", "8080")))),
         "PROD_GRAFANA_PORT": str(porta_livre(int(os.environ.get("PROD_GRAFANA_PORT", "3000")))),
@@ -142,10 +136,6 @@ def inicializa(kits):
     grava_env(env)
     diz(f"Configuração criada em {ENV.relative_to(RAIZ)} (senhas novas, permissão 600).")
     return env
-
-
-def kits_ativos(env):
-    return [k for k in env.get("PROD_KITS", "").split(",") if k in KITS]
 
 
 def endereco_local(env):
@@ -268,17 +258,16 @@ def verifica_arquivos(kits):
             raise Erro(f"Não achei {TPL_MSP.relative_to(RAIZ)}. Use a pasta completa do repositório kit-noc-link.")
         if hashlib.md5(TPL_MSP.read_bytes()).hexdigest() != TPL_MSP_MD5:
             raise Erro(f"{TPL_MSP.name} foi alterado. Use o arquivo original do kit.")
-    # Templates/ e Dashboards/ (pacotes pagos) podem chegar depois: o up instala sem eles e avisa
+    if "provedor" in kits and not TPL_PROVEDOR.exists():
+        raise Erro(f"Não achei {TPL_PROVEDOR.relative_to(RAIZ)}. Descompacte o pacote do Kit Provedor em {RAIZ} "
+                   "(as pastas Templates/ e Dashboards/ ficam ao lado do lab.sh) ou importe pela tela do Zabbix.")
 
 
 def importa_templates(api, kits):
     if "msp" in kits:
         api.call("configuration.import", {"format": "yaml", "rules": REGRAS, "source": TPL_MSP.read_text(encoding="utf-8")})
         diz("  OK  templates do Kit NOC: NOTO - LINK INTERNET, NOTO - VPN")
-    if "provedor" in kits and not TPL_PROVEDOR.exists():
-        diz("  --  pasta Templates/ do Kit Provedor não encontrada: templates não importados. Descompacte o pacote do")
-        diz(f"      Kit Provedor em {RAIZ} e rode ./producao/producao.sh up de novo (não apaga nada).")
-    elif "provedor" in kits:
+    if "provedor" in kits:
         texto = TPL_PROVEDOR.read_text(encoding="utf-8")
         renomeia_por_uuid(api, texto)
         api.call("configuration.import", {"format": "yaml", "source": texto,
@@ -287,7 +276,8 @@ def importa_templates(api, kits):
         diz(f"  OK  templates do Kit Provedor: {n} templates NOTO TI (TODOS - Kit Provedor.yaml)")
 
 
-def configura_zabbix(api, env, kits, community):
+def configura_kits(api, kits, community):
+    """Atalho "importar": grupos de hosts, macro da community e a saúde do Zabbix pelo template NOTO TI."""
     for kit in kits:
         for g in GRUPOS[kit]:
             if not api.um("hostgroup.get", {"name": [g]}, "groupid"):
@@ -300,11 +290,16 @@ def configura_zabbix(api, env, kits, community):
         api.call("usermacro.createglobal", {"macro": "{$SNMP_COMMUNITY}", "value": community or "public",
                                             "description": "Community SNMP dos equipamentos (os templates NOTO TI usam esta macro)."})
         diz(f"  OK  macro global {{$SNMP_COMMUNITY}} = {community or 'public'}"
-            + ("" if community else "  <- troque em Administração → Macros (ou ./producao.sh up --community X)"))
+            + ("" if community else "  <- troque em Administração → Macros (ou importar --community X)"))
     elif community and macro[0]["value"] != community:
         api.call("usermacro.updateglobal", {"globalmacroid": macro[0]["globalmacroid"], "value": community})
         diz(f"  OK  macro global {{$SNMP_COMMUNITY}} atualizada para {community}")
+    if "provedor" in kits:
+        ajusta_zabbix_server(api, usar_noto=True)
 
+
+def configura_base(api, env):
+    """Instalação zerada e pronta: usuário de leitura do Grafana e o host "Zabbix server" sem alerta falso."""
     # Grafana: usuário só de leitura pela API. Papel do tipo Super admin (enxerga todos os grupos, inclusive os que
     # você criar depois) mas limitado a métodos *.get e sem acesso à tela do Zabbix.
     regras = {"ui.default_access": 0, "modules.default_access": 0, "actions.default_access": 0,
@@ -325,20 +320,25 @@ def configura_zabbix(api, env, kits, community):
         api.call("user.create", dados)
     diz("  OK  usuário 'grafana' no Zabbix (somente leitura, usado pelo datasource do Grafana)")
 
-    # host "Zabbix server": o container não tem agente (sai o "Linux by Zabbix agent", que só daria alerta falso);
-    # com o Kit Provedor, a saúde do Zabbix passa a ser o template NOTO TI (mesmas chaves do oficial, em português)
+    ajusta_zabbix_server(api, usar_noto=False)
+
+
+def ajusta_zabbix_server(api, usar_noto):
+    """Host "Zabbix server": o container não tem agente (sai o "Linux by Zabbix agent", que só daria alerta falso).
+    Com os templates do Kit Provedor importados, a saúde passa a ser o NOTO TI (mesmas chaves do oficial, em português)."""
     zbx = api.call("host.get", {"output": ["hostid"], "filter": {"host": ["Zabbix server"]}, "selectParentTemplates": ["templateid", "host"],
                                 "selectInterfaces": ["interfaceid", "type"]})
     if zbx:
         h = zbx[0]
-        noto = api.um("template.get", {"host": [TPL_SAUDE_NOTO]}, "templateid") if "provedor" in kits else None
+        noto = api.um("template.get", {"host": [TPL_SAUDE_NOTO]}, "templateid") if usar_noto else None
         tirar = ["Linux by Zabbix agent"] + (["Zabbix server health"] if noto else [])
         sai = [t["templateid"] for t in h["parentTemplates"] if t["host"] in tirar]
         if sai:
             api.call("host.update", {"hostid": h["hostid"], "templates_clear": [{"templateid": t} for t in sai]})
         if noto and noto not in [t["templateid"] for t in h["parentTemplates"]]:
             api.call("host.massadd", {"hosts": [{"hostid": h["hostid"]}], "templates": [{"templateid": noto}]})
-        diz("  OK  host 'Zabbix server': " + ("saúde pelo NOTO TI - Saude do Zabbix server" if noto else "saúde pelo template oficial"))
+        diz("  OK  host 'Zabbix server': " + ("saúde pelo NOTO TI - Saude do Zabbix server" if noto else
+                                              "sem o 'Linux by Zabbix agent' (o container não tem agente: seria alerta falso)"))
 
 
 # ---------------------------------------------------------------- Grafana
@@ -370,11 +370,9 @@ def espera_grafana(env):
 
 
 def importa_dashboards(env, kits):
-    if not kits:
-        return
     if not DASHBOARDS.is_dir():
-        diz(f"  --  pasta {DASHBOARDS.name}/ não encontrada: nenhum dashboard importado. Descompacte o pacote do kit e rode")
-        diz("      ./producao/producao.sh up de novo, ou importe pelo Grafana (Dashboards → New → Import).")
+        diz(f"  --  pasta {DASHBOARDS.name}/ não encontrada: nenhum dashboard importado (importe pelo Grafana:")
+        diz("      Dashboards → New → Import, datasource Zabbix)")
         return
     for arq in sorted(DASHBOARDS.glob("*/*.json")):
         kit = next((k for k in kits if PREFIXO_DASH[k] in arq.parent.name), None)
@@ -409,33 +407,42 @@ def mostra_acesso(env):
 
 def cmd_up(args):
     exige_docker()
-    pedidos = [k for k in KITS if getattr(args, k)]
-    verifica_arquivos(pedidos)
-    env = inicializa(pedidos)
-    kits = kits_ativos(env)
-    verifica_arquivos(kits)
-    diz(f"Kits desta instalação: {', '.join(NOME_KIT[k] for k in kits) if kits else 'nenhum ainda (só Zabbix + Grafana)'}")
+    env = inicializa()
     diz("Baixando as imagens e subindo os containers...")
     compose("up", "-d", "--remove-orphans")
     api, versao = espera_zabbix(env)
     diz(f"Zabbix {versao} no ar. Configurando:")
-    importa_templates(api, kits)
-    configura_zabbix(api, env, kits, args.community)
+    configura_base(api, env)
     diz("Grafana:")
     espera_grafana(env)
     ok, msg = teste_datasource(env)
     diz(f"  {'OK ' if ok else 'ERRO'} datasource Zabbix {'conectado' if ok else '- ' + msg}")
-    importa_dashboards(env, kits)
     mostra_acesso(env)
     diz()
-    diz("Pronto. Próximo passo: cadastre os equipamentos (Coleta de dados → Hosts) com os templates do LEIA-ME.")
+    diz("Pronto: Zabbix e Grafana zerados e ligados. Próximos passos: importe os templates no Zabbix")
+    diz("(Coleta de dados → Templates → Importar) e os dashboards no Grafana (Dashboards → New → Import).")
     diz("Faça backup com ./producao/producao.sh backup (e guarde o arquivo fora deste servidor).")
+
+
+def cmd_importar(args):
+    env = le_env()
+    exige_docker()
+    kits = [k for k in KITS if getattr(args, k)]
+    if not kits:
+        raise Erro("Diga o que importar: ./producao/producao.sh importar --provedor, --msp ou os dois.")
+    verifica_arquivos(kits)
+    api, _ = espera_zabbix(env)
+    diz(f"Importando {', '.join(NOME_KIT[k] for k in kits)}:")
+    importa_templates(api, kits)
+    configura_kits(api, kits, args.community)
+    espera_grafana(env)
+    importa_dashboards(env, kits)
+    diz("Pronto. Pode rodar de novo quando o pacote for atualizado: os dashboards que já existem não são substituídos.")
 
 
 def cmd_status(args):
     env = le_env()
     exige_docker()
-    diz(f"Kits: {', '.join(NOME_KIT[k] for k in kits_ativos(env)) or 'nenhum (só Zabbix + Grafana)'}")
     diz(compose("ps", "--format", "  {{.Service}}\t{{.Status}}", capturar=True).stdout.rstrip() or "  nenhum container rodando")
     try:
         api = Zabbix(env)
@@ -486,7 +493,7 @@ def faz_backup(env, rotulo=""):
         with open(tmp / "grafana.tar.gz", "wb") as f:
             compose("exec", "-T", "grafana", "tar", "czf", "-", "-C", "/var/lib/grafana", ".", saida=f)
         shutil.copy(ENV, tmp / "env")
-        (tmp / "versao.json").write_text(json.dumps({"criado": time.strftime("%Y-%m-%d %H:%M:%S"), "kits": kits_ativos(env)}))
+        (tmp / "versao.json").write_text(json.dumps({"criado": time.strftime("%Y-%m-%d %H:%M:%S"), "projeto": PROJETO}))
         fd = os.open(nome, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "wb") as f, tarfile.open(fileobj=f, mode="w:gz") as t:
             for p in sorted(tmp.iterdir()):
@@ -537,7 +544,7 @@ def cmd_restore(args):
                 entrada=(tmp / "grafana.tar.gz").read_bytes(), saida=subprocess.DEVNULL)
         # senhas que moram dentro do banco/Grafana restaurados vêm do backup; banco, portas e rede ficam as deste servidor
         antigo = dict(l.split("=", 1) for l in (tmp / "env").read_text().splitlines() if l and not l.startswith("#") and "=" in l)
-        for k in ("PROD_ADMIN_PASSWORD", "PROD_GRAFANA_PASSWORD", "PROD_ZBX_GRAFANA_PASSWORD", "PROD_KITS"):
+        for k in ("PROD_ADMIN_PASSWORD", "PROD_GRAFANA_PASSWORD", "PROD_ZBX_GRAFANA_PASSWORD"):
             if k in antigo:
                 env[k] = antigo[k]
         grava_env(env)
@@ -575,11 +582,12 @@ def cmd_destroy(args):
 def main():
     p = argparse.ArgumentParser(prog="producao.sh", description="NOTO TI - Zabbix + Grafana em produção (Kit NOC e Kit Provedor)")
     sub = p.add_subparsers(dest="comando", required=True)
-    up = sub.add_parser("up", help="instala ou atualiza a configuração (não apaga nada)")
-    up.add_argument("--msp", action="store_true", help="Kit NOC: templates NOTO - LINK INTERNET / NOTO - VPN e dashboards Kit NOC")
-    up.add_argument("--provedor", action="store_true", help="Kit Provedor: templates NOTO TI e dashboards Kit Provedor")
-    up.add_argument("--community", help="community SNMP dos equipamentos (macro global {$SNMP_COMMUNITY})")
-    up.set_defaults(func=cmd_up)
+    sub.add_parser("up", help="instala Zabbix + Grafana zerados e prontos (pode rodar de novo; não apaga nada)").set_defaults(func=cmd_up)
+    imp = sub.add_parser("importar", help="atalho opcional: importa templates e dashboards das pastas do pacote")
+    imp.add_argument("--msp", action="store_true", help="Kit NOC: templates NOTO - LINK INTERNET / NOTO - VPN e dashboards Kit NOC")
+    imp.add_argument("--provedor", action="store_true", help="Kit Provedor: pasta Templates/ e dashboards Kit Provedor")
+    imp.add_argument("--community", help="community SNMP dos equipamentos (macro global {$SNMP_COMMUNITY})")
+    imp.set_defaults(func=cmd_importar)
     sub.add_parser("status", help="containers, Zabbix, Grafana e último backup").set_defaults(func=cmd_status)
     sub.add_parser("creds", help="endereços e senhas").set_defaults(func=cmd_creds)
     lg = sub.add_parser("logs", help="logs: logs [db|zabbix-server|zabbix-web|grafana]")

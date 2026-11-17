@@ -5,8 +5,8 @@ gravar os dashboards Grafana do **Kit NOC (MSP)** e do **Kit Provedor**.
 Todos os nomes e dados são fictícios.
 
 > **Produção:** para monitorar os equipamentos reais (no provedor ou no cliente), use a pasta
-> [`producao/`](producao/LEIA-ME.md). Ela sobe Zabbix + Grafana prontos, com os templates e os dashboards
-> dos kits, sem nada do laboratório: `./producao/producao.sh up --provedor --msp`.
+> [`producao/`](producao/LEIA-ME.md). Ela sobe Zabbix + Grafana zerados e prontos para usar (Grafana já ligado
+> ao Zabbix), sem nada do laboratório: `./producao/producao.sh up`. Templates e dashboards são importados pela tela.
 
 | Componente | Versão |
 |---|---|
@@ -345,4 +345,4 @@ e escolhe o datasource **Zabbix**. Mesmo visual do Kit NOC.
 | `Templates/` | templates Zabbix do Kit Provedor (OLTs, MikroTik, Huawei, BGP, rádios, servidores) com alertas em cascata; `LEIA-ME.md`, `CORRECOES.md` e o gerador em `_gerador/`. **Fora do git** |
 | `Dashboards/` | pacote para os alunos: uma pasta por dashboard (JSON + preview.png + LEIA-ME). Gerado pelo `build_dashboards.py`, **fora do git** |
 | `grafana/provisioning/` | plugin Zabbix e datasource (sem dashboards: o aluno importa) |
-| `producao/` | instalação de produção: `producao.sh` (up, status, backup, restore, update, destroy), `compose.yaml` e `LEIA-ME.md` |
+| `producao/` | instalação de produção: `producao.sh` (up, importar, status, backup, restore, update, destroy), `compose.yaml` e `LEIA-ME.md` |
