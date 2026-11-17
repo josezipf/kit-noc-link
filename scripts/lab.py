@@ -1186,6 +1186,57 @@ def cmd_creds(args):
     show_access(read_env())
 
 
+PROD_PROJETO = "nototi-producao"
+PROD_REDES = {"msp": ("internet", "4.250"), "provedor": ("core", "1.250")}   # rede do lab e IP do Zabbix de produção nela
+
+
+def cmd_producao(args):
+    """Liga o Zabbix de produção (./producao/producao.sh) à rede dos equipamentos do lab, para o aluno praticar o
+    cadastro manual com equipamentos "reais" (os containers do lab). Não mexe em nada dentro do Zabbix de produção."""
+    env = read_env()
+    require_docker()
+    zbx = run(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={PROD_PROJETO}",
+               "--filter", "label=com.docker.compose.service=zabbix-server"], capture=True).stdout.strip()
+    if not zbx:
+        raise LabError("A produção não está rodando. Suba antes com ./producao/producao.sh up.")
+    kits = active_kits(env)
+    for kit in kits:
+        rede, sufixo = PROD_REDES[kit]
+        nome = f"{PROJECT}_{rede}"
+        ligado = nome in run(["docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", zbx], capture=True).stdout
+        if args.acao == "ligar" and not ligado:
+            run(["docker", "network", "connect", "--ip", ip(env, sufixo), nome, zbx], capture=True)
+        elif args.acao == "desligar" and ligado:
+            run(["docker", "network", "disconnect", nome, zbx], capture=True)
+    if args.acao == "desligar":
+        say("Zabbix de produção desligado da rede do lab. Os hosts do lab cadastrados nele vão ficar sem resposta.")
+        return
+    say("Zabbix de produção ligado à rede do lab: ele já alcança os equipamentos abaixo (ping e SNMP).")
+    say("Cadastre na produção como se fossem equipamentos reais (Coleta de dados → Hosts → Criar host).")
+    say(f"Community SNMP de todos: {env['LAB_SNMP_COMMUNITY']}")
+    if "msp" in kits:
+        say()
+        say("Kit NOC · template NOTO - LINK INTERNET · interface SNMP no IP abaixo, community {$SNMP_COMMUNITY}")
+        say(f"  {'HOST':<16} {'IP':<14} {'NOME VISÍVEL':<22} {'{$INDEX}':<9} {'{$INTERFACE}':<13} {'{$OPERADORA}':<15} {'{$LOCAL}'}")
+        for link in msp_links():
+            idx = wan_index(env, link)
+            visivel = f"{link['descricao'].split(' - ')[0].strip()} | {mbps_macro(link['contratado'])}"
+            say(f"  {link['host']:<16} {fw_ip(env, link):<14} {visivel:<22} {str(idx or '?'):<9} {'wan1':<13} "
+                f"{link['operadora']:<15} {link['local']}")
+        say("  {$BANDA_WARN_DOWN} / {$BANDA_WARN_UP}: 80% do contratado em bps (ex.: 500M -> 400000000)")
+        say("  {$INDEX}: confirme com ./lab.sh snmpwalk <HOST> (a linha da wan1)")
+    if "provedor" in kits:
+        say()
+        say("Kit Provedor · interface SNMP no IP abaixo, community {$SNMP_COMMUNITY} · templates conforme Templates/LEIA-ME.md")
+        say(f"  {'HOST':<16} {'IP':<14} TEMPLATES")
+        for d in prov_equipamentos(True):
+            tpls = " + ".join(TPL_PROV[k] for k in TEMPLATES_POR_PAPEL[d["papel"]])
+            say(f"  {d['host']:<16} {ip(env, d['mgmt']):<14} {tpls}")
+        say("  Em todos: macro de host {$FILTRO_REDE} = ^ge- (monitora só as interfaces de enlace)")
+    say()
+    say("Se a produção for recriada (update/restore), rode ./lab.sh producao ligar de novo.")
+
+
 def cmd_snmpwalk(args):
     """Mostra o que o Zabbix enxerga via SNMP, ex.: ./lab.sh snmpwalk FW-INDUSTRIA-A ifName"""
     env = read_env()
@@ -1237,6 +1288,9 @@ def main():
     logs = sub.add_parser("logs", help="logs de um serviço")
     logs.add_argument("service", nargs="?")
     logs.set_defaults(func=cmd_logs)
+    prod = sub.add_parser("producao", help="liga/desliga o Zabbix de produção à rede do lab (praticar o cadastro manual)")
+    prod.add_argument("acao", choices=["ligar", "desligar"])
+    prod.set_defaults(func=cmd_producao)
     walk = sub.add_parser("snmpwalk", help="SNMP walk visto da rede do Zabbix")
     walk.add_argument("host")
     walk.add_argument("oid", nargs="?", default="IF-MIB::ifName")
