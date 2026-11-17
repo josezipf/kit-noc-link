@@ -25,3 +25,6 @@ producao/backups/
 # Pacotes pagos dos alunos (gerados por scripts/empacotar.py)
 Pacotes/
 scripts/empacotar.py
+
+# Material de aula (só na máquina do professor)
+Aulas/
